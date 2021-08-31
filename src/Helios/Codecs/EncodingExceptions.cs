@@ -3,7 +3,7 @@
 // See ThirdPartyNotices.txt for references to third party code used inside Helios.
 
 using System;
-using Helios.Serialization;
+//using Helios.Serialization;
 
 namespace Helios.Codecs
 {

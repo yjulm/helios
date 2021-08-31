@@ -3,7 +3,7 @@
 // See ThirdPartyNotices.txt for references to third party code used inside Helios.
 
 using System.Collections.Generic;
-using Helios.Net;
+//using Helios.Net;
 
 namespace Helios.Channels
 {

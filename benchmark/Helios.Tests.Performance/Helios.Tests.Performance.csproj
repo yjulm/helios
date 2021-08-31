@@ -51,18 +51,11 @@
     <Compile Include="Concurrency\EventExecutorSpecs.cs" />
     <Compile Include="Concurrency\FiberSpecs.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Socket\SocketThroughputSpec.cs" />
-    <Compile Include="Socket\TcpThroughputSpec.cs" />
-    <Compile Include="Socket\UdpThroughputSpec.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Helios\Helios.csproj">
       <Project>{fcc26fa6-1b8e-413d-aca5-a25b9c6459a1}</Project>
       <Name>Helios</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\tests\Helios.MultiNodeTests\Helios.MultiNodeTests.csproj">
-      <Project>{9435b7df-a2cb-4ca4-945c-b7e663019ace}</Project>
-      <Name>Helios.MultiNodeTests</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

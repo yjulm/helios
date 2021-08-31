@@ -2,95 +2,92 @@
 // Licensed under the Apache 2.0 license. See LICENSE file in the project root for full license information.
 // See ThirdPartyNotices.txt for references to third party code used inside Helios.
 
+using Helios.Buffers;
+using Helios.Channels;
+using Helios.Channels.Bootstrap;
+using Helios.Channels.Sockets;
+using Helios.Codecs;
 using System;
-using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading;
-using Helios.Concurrency;
-using Helios.Net;
-using Helios.Net.Bootstrap;
-using Helios.Topology;
-using Helios.Util;
+using System.Threading.Tasks;
 
 namespace TimeServiceClient
 {
+    public class EchoClientHandler : ChannelHandlerAdapter
+    {
+        private readonly IByteBuf initialMessage;
+
+        public EchoClientHandler()
+        {
+            this.initialMessage = Unpooled.Buffer(500);
+            byte[] messageBytes = new byte[500];
+            new Random().NextBytes(messageBytes);
+            this.initialMessage.WriteBytes(messageBytes);
+        }
+
+        public override void ChannelActive(IChannelHandlerContext context)
+        {
+            context.WriteAndFlushAsync(this.initialMessage);
+        }
+
+        public override void ChannelRead(IChannelHandlerContext context, object message)
+        {
+            var byteBuffer = message as IByteBuf;
+            //if (byteBuffer != null)
+            //{
+            //    Console.WriteLine("Received from server: " + byteBuffer.ToString(Encoding.UTF8));
+            //}
+            context.WriteAsync(message);
+        }
+
+        public override void ChannelReadComplete(IChannelHandlerContext context)
+        {
+            context.Flush();
+        }
+
+        public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
+        {
+            Console.WriteLine("Exception: " + exception);
+            context.CloseAsync();
+        }
+    }
+
     internal class Program
     {
-        public static IConnection TimeClient;
-
-        private static void Main(string[] args)
+        private static async Task RunClientAsync()
         {
-            var host = IPAddress.Loopback;
-            var port = 9991;
-            var bootstrapper =
-                new ClientBootstrap()
-                    .SetTransport(TransportType.Tcp).Build();
+            var group = new MultithreadEventLoopGroup();
 
-            TimeClient = bootstrapper.NewConnection(Node.Empty(), NodeBuilder.BuildNode().Host(host).WithPort(port));
-            TimeClient.OnConnection += (address, connection) =>
+            try
             {
-                Console.WriteLine("Confirmed connection with host.");
-                connection.BeginReceive(ReceivedCallback);
-            };
-            TimeClient.OnDisconnection += (address, reason) => Console.WriteLine("Disconnected.");
+                var bootstrap = new ClientBootstrap()
+                    .Group(group)
+                    .Channel<TcpSocketChannel>()
+                    .Option(ChannelOption.TcpNodelay, true)
+                    .Handler(new ActionChannelInitializer<ISocketChannel>(channel =>
+                    {
+                        IChannelPipeline pipeline = channel.Pipeline;
+                        pipeline.AddLast("framing-enc", new LengthFieldPrepender(2));
+                        pipeline.AddLast("framing-dec", new LengthFieldBasedFrameDecoder(ushort.MaxValue, 0, 2, 0, 2));
 
-            Console.Title = string.Format("TimeClient {0}", Process.GetCurrentProcess().Id);
-            LoopConnect();
-            Console.WriteLine("Requesting time from server...");
-            Console.WriteLine("Printing every 1/1000 received messages");
-            LoopWrite();
-            Console.WriteLine("Press any key to exit.");
-            Console.ReadLine();
-        }
+                        pipeline.AddLast("echo", new EchoClientHandler());
+                    }));
 
-        private static void ReceivedCallback(NetworkData data, IConnection responseChannel)
-        {
-            var timeStr = Encoding.UTF8.GetString(data.Buffer);
-            if (ThreadLocalRandom.Current.Next(0, 1000) == 1)
+                IChannel clientChannel = await bootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse("192.168.0.4"), 10086));
+
+                Console.ReadLine();
+
+                await clientChannel.CloseAsync();
+            }
+            finally
             {
-                Console.WriteLine("Received: {0}", timeStr);
+                await group.ShutdownGracefullyAsync();
             }
         }
 
-        private static void LoopWrite()
+        private static void Main()
         {
-            var command = Encoding.UTF8.GetBytes("gettime");
-            var fiber = FiberFactory.CreateFiber(3);
-
-            Action dedicatedMethod = () =>
-            {
-                Thread.Sleep(1);
-                TimeClient.Send(new NetworkData {Buffer = command, Length = command.Length});
-            };
-
-            while (TimeClient.IsOpen())
-            {
-                fiber.Add(dedicatedMethod);
-            }
-            Console.WriteLine("Connection closed.");
-            fiber.GracefulShutdown(TimeSpan.FromSeconds(1));
-        }
-
-        private static void LoopConnect()
-        {
-            var attempts = 0;
-            while (!TimeClient.IsOpen())
-            {
-                try
-                {
-                    attempts++;
-                    TimeClient.Open();
-                }
-                catch (SocketException ex)
-                {
-                    Console.WriteLine("Connection attempt {0}", attempts);
-                    if (attempts > 5) throw;
-                }
-            }
-            Console.Clear();
-            Console.WriteLine("Connected");
+            RunClientAsync().Wait();
         }
     }
 }
